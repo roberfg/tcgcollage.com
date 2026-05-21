@@ -123,7 +123,8 @@ El proyecto está configurado para desplegarse en **Vercel** en modo SSR. Los se
 - [ ] **Límite de cartas con aviso** — Si el usuario pega 200+ cartas, mostrar un warning antes de procesar.
 
 ### Orden recomendado de implementación
-1. Guardar configuración en localStorage
+1. **[P1] API propia de imágenes** — Crear un server route (`/api/card-images`) que almacene localmente las imágenes de cartas descargadas. Al buscar una carta, ir primero a este cache local antes de consultar las APIs públicas (Scryfall / Pokémon TCG API). Reduciría drásticamente la latencia y el consumo de APIs externas.
+2. Guardar configuración en localStorage
 2. Botón "Limpiar todo"
 3. Tooltip preview de carta
 4. Toast de confirmación
