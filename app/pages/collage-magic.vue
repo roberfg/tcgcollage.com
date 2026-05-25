@@ -37,18 +37,18 @@ const multiRows = ref(3)
 const parseDeckList = (text: string) => {
   const lines = text.trim().split('\n').filter(l => l.trim())
   return lines.map(line => {
-    const withQuotes = line.match(/(\d+),\s*"([^"]+)"(?:\s*,\s*(\S+))?/)
+    const withQuotes = line.match(/(\d+),\s*"([^"]+)"(?:\s*,\s*(\S+)(?:\s*,\s*(\S+))?)?/)
     if (withQuotes) {
-      return { quantity: parseInt(withQuotes[1]), name: withQuotes[2], set: withQuotes[3] || undefined }
+      return { quantity: parseInt(withQuotes[1]), name: withQuotes[2], set: withQuotes[3] || undefined, number: withQuotes[4] || undefined }
     }
-    const withSet = line.match(/^(\d+)\s+(.+?)\s+\((\w+)\)\s*$/)
+    const withSet = line.match(/^(\d+)\s+(.+?)\s+\((\w+)(?:-(\S+))?\)\s*$/)
     if (withSet) {
-      return { quantity: parseInt(withSet[1]), name: withSet[2], set: withSet[3] }
+      return { quantity: parseInt(withSet[1]), name: withSet[2], set: withSet[3], number: withSet[4] || undefined }
     }
     const simple = line.match(/^(\d+)\s+(.+)$/)
     if (!simple) return null
-    return { quantity: parseInt(simple[1]), name: simple[2], set: undefined }
-  }).filter(Boolean) as { quantity: number; name: string; set?: string }[]
+    return { quantity: parseInt(simple[1]), name: simple[2], set: undefined, number: undefined }
+  }).filter(Boolean) as { quantity: number; name: string; set?: string; number?: string }[]
 }
 
 const processDeckList = async () => {
@@ -72,7 +72,7 @@ const processDeckList = async () => {
       await Promise.all(batch.map(async (item, batchIdx) => {
         const origIdx = i + batchIdx
         try {
-          const cards = await searchCards(item.name, item.set)
+          const cards = await searchCards(item.name, item.set, item.number)
           if (cards && cards.length > 0) {
             const card = cards[0]
             results[origIdx] = { id: card.id, name: card.name, imageUrl: card.imageUrl, quantity: Math.min(60, item.quantity) }
@@ -177,7 +177,9 @@ const onGenerate = async () => {
               v-model="deckList"
               placeholder='1 Get Out
 2 Lightning Bolt (M21)
-1,"Counterspell",EMA'
+1 Harmonized Crescendo (ECL-408)
+1,"Counterspell",EMA
+1,"Harmonized Crescendo",ECL,408'
               class="w-full h-48 bg-brand-100 dark:bg-brand-800 rounded-lg px-3 py-2 text-sm outline-none font-mono"
             />
             <button
