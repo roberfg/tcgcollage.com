@@ -15,12 +15,19 @@ interface PokemonTcgResponse<T> {
     data: T[]
 }
 
-const STORAGE_KEY = 'ptcg_set_id_cache'
+interface CachedCardResult {
+    cards: CardResult[]
+    timestamp: number
+}
+
+const SET_STORAGE_KEY = 'ptcg_set_id_cache'
+const CARD_CACHE_KEY = 'ptcg_card_cache'
+const CARD_CACHE_TTL = 24 * 60 * 60 * 1000
 
 const loadStoredSetCache = (): Map<string, string> => {
     if (typeof localStorage === 'undefined') return new Map()
     try {
-        const raw = localStorage.getItem(STORAGE_KEY)
+        const raw = localStorage.getItem(SET_STORAGE_KEY)
         return raw ? new Map(JSON.parse(raw)) : new Map()
     } catch {
         return new Map()
@@ -32,8 +39,34 @@ const setIdCache = loadStoredSetCache()
 const persistSetCache = () => {
     if (typeof localStorage === 'undefined') return
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify([...setIdCache]))
+        localStorage.setItem(SET_STORAGE_KEY, JSON.stringify([...setIdCache]))
     } catch {}
+}
+
+const getCardCache = (): Map<string, CachedCardResult> => {
+    if (typeof localStorage === 'undefined') return new Map()
+    try {
+        const raw = localStorage.getItem(CARD_CACHE_KEY)
+        return raw ? new Map(JSON.parse(raw)) : new Map()
+    } catch {
+        return new Map()
+    }
+}
+
+const cardCache = getCardCache()
+
+const persistCardCache = () => {
+    if (typeof localStorage === 'undefined') return
+    try {
+        const now = Date.now()
+        const expired = [...cardCache.entries()].filter(([_, v]) => now - v.timestamp > CARD_CACHE_TTL)
+        expired.forEach(([k]) => cardCache.delete(k))
+        localStorage.setItem(CARD_CACHE_KEY, JSON.stringify([...cardCache]))
+    } catch {}
+}
+
+const getCacheKey = (name: string, setId?: string, number?: string): string => {
+    return `${name.toLowerCase()}|${setId || ''}|${number || ''}`
 }
 
 export const usePokemonTcgApi = () => {
@@ -67,6 +100,13 @@ export const usePokemonTcgApi = () => {
     }
 
     const searchCards = async (name: string, ptcgoCode?: string, number?: string): Promise<CardResult[]> => {
+        const cacheKey = getCacheKey(name, ptcgoCode, number)
+        const cached = cardCache.get(cacheKey)
+
+        if (cached && Date.now() - cached.timestamp < CARD_CACHE_TTL) {
+            return cached.cards
+        }
+
         const quotedName = `"${name}"`
         let query = `name:${quotedName}`
 
@@ -97,7 +137,10 @@ export const usePokemonTcgApi = () => {
         }
 
         if (data.data.length > 0) {
-            return toResults(data.data)
+            const results = toResults(data.data)
+            cardCache.set(cacheKey, { cards: results, timestamp: Date.now() })
+            persistCardCache()
+            return results
         }
 
         if (ptcgoCode && number) {
@@ -107,7 +150,22 @@ export const usePokemonTcgApi = () => {
                     pageSize: 12
                 }
             })
-            return toResults(fallbackData.data)
+            if (fallbackData.data.length > 0) {
+                const results = toResults(fallbackData.data)
+                cardCache.set(cacheKey, { cards: results, timestamp: Date.now() })
+                persistCardCache()
+                return results
+            }
+        }
+
+        if (!ptcgoCode && !number) {
+            const fallbackKey = name.toLowerCase()
+            for (const [key, value] of cardCache.entries()) {
+                const parts = key.split('|')
+                if (parts[0] === fallbackKey && parts[1] === '' && parts[2] === '' && Date.now() - value.timestamp < CARD_CACHE_TTL) {
+                    return [value.cards[0]]
+                }
+            }
         }
 
         return []
